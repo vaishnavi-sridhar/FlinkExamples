@@ -1,4 +1,4 @@
-package edu.cu.flink.benchmarks;
+package edu.cu.boulder.cs.flink;
 
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.streaming.api.functions.source.RichParallelSourceFunction;

@@ -1,4 +1,4 @@
-package edu.cu.flink.benchmarks;
+package edu.cu.boulder.cs.flink;
 
 import org.apache.commons.cli.*;
 import org.apache.flink.api.common.functions.FlatJoinFunction;

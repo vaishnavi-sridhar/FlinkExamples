@@ -1,4 +1,4 @@
-package edu.cu.flink.benchmarks;
+package edu.cu.boulder.cs.flink;
 
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 

@@ -1,4 +1,4 @@
-package edu.cu.flink.benchmarks;
+package edu.cu.boulder.cs.flink;
 
 public class Netflow {
   public int samGeneratedId;
