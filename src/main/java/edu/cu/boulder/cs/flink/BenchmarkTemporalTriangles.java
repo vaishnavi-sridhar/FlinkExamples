@@ -20,7 +20,8 @@ import org.apache.flink.util.Collector;
 public class BenchmarkTemporalTriangles {
 
 
-  private static class SourceKeySelector implements KeySelector<TemporalEdge, Integer>
+  private static class SourceKeySelector 
+    implements KeySelector<TemporalEdge, Integer>
   {
     @Override
     public Integer getKey(TemporalEdge edge) {

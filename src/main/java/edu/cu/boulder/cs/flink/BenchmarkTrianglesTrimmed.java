@@ -22,13 +22,27 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+/**
+ * This file looks at the temporal triangle query without all the overhead
+ * of the netflow fields.  The tmpoeral triangle query only involves
+ * three fields, the source (sourceIP for netflows), the target 
+ * (destIP for netflows), and the timestamp.  This version of the 
+ * temporal triangle query creates data structures with just those fields.
+ * That way we can compare to the version using full netflows to understand
+ * what the overhead is for representing all the fields of the netflow
+ * and tossing them around during the computation.
+ */
 public class BenchmarkTrianglesTrimmed {
 
+  /**
+   * A class to represent an edge.  It needs three things, a source,
+   * a target, and a timestamp.
+   */
   private static class EdgeWithTime
   {
     public String source;
     public String target;
-    public double timeSeconds;
+    public double timeSeconds; 
 
     public EdgeWithTime(String source, String target, double timeSeconds)
     {
@@ -44,7 +58,13 @@ public class BenchmarkTrianglesTrimmed {
     }
   }
 
-  private static class SourceKeySelector implements KeySelector<EdgeWithTime, String>
+
+  /**
+   * Class to grab the source of the edge.  Used by the dataflow below
+   * to join edges together to form a triad.
+   */
+  private static class SourceKeySelector 
+    implements KeySelector<EdgeWithTime, String>
   {
     @Override
     public String getKey(EdgeWithTime edge) {
@@ -52,7 +72,12 @@ public class BenchmarkTrianglesTrimmed {
     }
   }
 
-  private static class DestKeySelector implements KeySelector<EdgeWithTime, String>
+  /**
+   * Class to grab the destination of the edge.  Used by the data pipelin
+   * below to join edges together to form a triad.
+   */
+  private static class DestKeySelector 
+    implements KeySelector<EdgeWithTime, String>
   {
     @Override
     public String getKey(EdgeWithTime edge) {
@@ -60,8 +85,12 @@ public class BenchmarkTrianglesTrimmed {
     }
   }
 
-  private static class LastEdgeKeySelector implements KeySelector<EdgeWithTime,
-      Tuple2<String, String>>
+  /**
+   * Key selector that returns a tuple with the target of the edge
+   * followed by the source of the edge.
+   */
+  private static class LastEdgeKeySelector 
+    implements KeySelector<EdgeWithTime, Tuple2<String, String>>
   {
     @Override
     public Tuple2<String, String> getKey(EdgeWithTime e1)
@@ -74,7 +103,8 @@ public class BenchmarkTrianglesTrimmed {
    * Key selector that returns a tuple with the source of the first edge and the
    * destination of the second edge.
    */
-  private static class TriadKeySelector implements KeySelector<Triad, Tuple2<String, String>>
+  private static class TriadKeySelector 
+    implements KeySelector<Triad, Tuple2<String, String>>
   {
     @Override
     public Tuple2<String, String> getKey(Triad triad)
@@ -84,7 +114,8 @@ public class BenchmarkTrianglesTrimmed {
   }
 
 
-  private static class Netflow2EdgeWithTime implements MapFunction<Netflow, EdgeWithTime>
+  private static class Netflow2EdgeWithTime 
+    implements MapFunction<Netflow, EdgeWithTime>
   {
     @Override
     public EdgeWithTime map(Netflow inNetflow) throws Exception {
@@ -93,6 +124,14 @@ public class BenchmarkTrianglesTrimmed {
     }
   }
 
+  /**
+   * A triad is two edges connected with a common vertex.  The common
+   * vertex is not enforced by this class, but with the logic defined
+   * in the dataflow where Triads are formed with:
+   * sourceTarget.join(sourceTarget)
+   *     .where(new DestKeySelector())
+   *     .equalTo(new SourceKeySelector())
+   */
   private static class Triad
   {
     EdgeWithTime e1;
@@ -110,6 +149,11 @@ public class BenchmarkTrianglesTrimmed {
     }
   }
 
+  /**
+   * A triangle is three edes where vertex A->B->C->A.
+   * The topological and temporal constraints are again handled
+   * by the data flow defined below.
+   */
   private static class Triangle
   {
     EdgeWithTime e1;
@@ -130,7 +174,12 @@ public class BenchmarkTrianglesTrimmed {
     }
   }
 
-  private static class EdgeJoiner implements FlatJoinFunction<EdgeWithTime, EdgeWithTime, Triad>
+ 
+  /**
+   * Joins two edges together to form triads.
+   */ 
+  private static class EdgeJoiner 
+    implements FlatJoinFunction<EdgeWithTime, EdgeWithTime, Triad>
   {
     private double queryWindow;
 
@@ -150,7 +199,11 @@ public class BenchmarkTrianglesTrimmed {
     }
   }
 
-  private static class TriadJoiner implements FlatJoinFunction<Triad, EdgeWithTime, Triangle>
+  /**
+   * Joins a Triad with and edge to form a triangle.
+   */
+  private static class TriadJoiner 
+    implements FlatJoinFunction<Triad, EdgeWithTime, Triangle>
   {
     private double queryWindow;
 
@@ -170,7 +223,12 @@ public class BenchmarkTrianglesTrimmed {
     }
   }
 
-  private static class TriangleMapper implements MapFunction<Triangle, Integer>
+  /**
+   * Maps an instance of a triangle to the value 1.  This is used
+   * to count the triangles in a map-reduce operation.
+   */
+  private static class TriangleMapper 
+    implements MapFunction<Triangle, Integer>
   {
     @Override
     public Integer map(Triangle triangle) throws Exception {
@@ -178,6 +236,10 @@ public class BenchmarkTrianglesTrimmed {
     }
   }
 
+  /**
+   * A reduce operation that combines two integers by adding them.  This
+   * is used in a map-reduce operation to count the triangles.
+   */
   private static class CountTriangles implements ReduceFunction<Integer>
   {
     @Override
@@ -250,15 +312,17 @@ public class BenchmarkTrianglesTrimmed {
     String outputFile = cmd.getOptionValue("outputFile");
 
     // get the execution environment
-    final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+    final StreamExecutionEnvironment env = 
+      StreamExecutionEnvironment.getExecutionEnvironment();
     env.setParallelism(numSources);
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
     NetflowSource netflowSource = new NetflowSource(numEvents, numIps, rate);
     DataStreamSource<Netflow> netflows = env.addSource(netflowSource);
 
-    DataStream<EdgeWithTime> sourceTarget = netflows.map(new Netflow2EdgeWithTime());
-    //sourceTarget.print();
+    DataStream<EdgeWithTime> sourceTarget = 
+      netflows.map(new Netflow2EdgeWithTime());
+    
     DataStream<Triangle> triangles = sourceTarget.join(sourceTarget)
         .where(new DestKeySelector())
         .equalTo(new SourceKeySelector())
@@ -272,7 +336,8 @@ public class BenchmarkTrianglesTrimmed {
             Time.milliseconds(slideSizeMs)))
         .apply(new TriadJoiner(queryWindow));
 
-    SingleOutputStreamOperator<Integer> result = triangles.map(new TriangleMapper())
+    SingleOutputStreamOperator<Integer> result = 
+        triangles.map(new TriangleMapper())
         .timeWindowAll(Time.milliseconds(windowSizeMs),
             Time.milliseconds(slideSizeMs))
         .reduce(new CountTriangles());

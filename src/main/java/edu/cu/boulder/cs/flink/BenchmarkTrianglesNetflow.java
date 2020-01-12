@@ -32,7 +32,12 @@ import org.apache.flink.util.Collector;
  */
 public class BenchmarkTrianglesNetflow {
 
-  private static class SourceKeySelector implements KeySelector<Netflow, String>
+  /**
+   * Class to grab the source of the edge.  Used by the dataflow below
+   * to join edges together to form a triad.
+   */
+  private static class SourceKeySelector 
+    implements KeySelector<Netflow, String>
   {
     @Override
     public String getKey(Netflow edge) {
@@ -40,7 +45,12 @@ public class BenchmarkTrianglesNetflow {
     }
   }
 
-  private static class DestKeySelector implements KeySelector<Netflow, String>
+  /**
+   * Class to grab the destination of the edge.  Used by the data pipelin
+   * below to join edges together to form a triad.
+   */
+  private static class DestKeySelector 
+    implements KeySelector<Netflow, String>
   {
     @Override
     public String getKey(Netflow edge) {
@@ -48,7 +58,12 @@ public class BenchmarkTrianglesNetflow {
     }
   }
 
-  private static class LastEdgeKeySelector implements KeySelector<Netflow, Tuple2<String, String>>
+  /**
+   * Key selector that returns a tuple with the target of the edge
+   * followed by the source of the edge.
+   */
+  private static class LastEdgeKeySelector 
+    implements KeySelector<Netflow, Tuple2<String, String>>
   {
     @Override
     public Tuple2<String, String> getKey(Netflow e1)
@@ -56,6 +71,12 @@ public class BenchmarkTrianglesNetflow {
       return new Tuple2<String, String>(e1.destIp, e1.sourceIp);
     }
   }
+
+  /**
+   * A triad is two edges connected with a common vertex.  The common
+   * vertex is not enforced by this class, but with the logic defined
+   * in the dataflow. 
+   */
 
   private static class Triad
   {
@@ -78,7 +99,8 @@ public class BenchmarkTrianglesNetflow {
    * Key selector that returns a tuple with the source of the first edge and the
    * destination of the second edge.
    */
-  private static class TriadKeySelector implements KeySelector<Triad, Tuple2<String, String>>
+  private static class TriadKeySelector 
+    implements KeySelector<Triad, Tuple2<String, String>>
   {
     @Override
     public Tuple2<String, String> getKey(Triad triad)
@@ -87,6 +109,11 @@ public class BenchmarkTrianglesNetflow {
     }
   }
 
+  /**
+   * A triangle is three edes where vertex A->B->C->A.
+   * The topological and temporal constraints are again handled
+   * by the data flow defined below.
+   */
   private static class Triangle
   {
     Netflow e1;
@@ -107,7 +134,11 @@ public class BenchmarkTrianglesNetflow {
     }
   }
 
-  private static class EdgeJoiner extends ProcessJoinFunction<Netflow, Netflow, Triad>
+  /**
+   * Joins two edges together to form triads.
+   */ 
+  private static class EdgeJoiner 
+    extends ProcessJoinFunction<Netflow, Netflow, Triad>
   {
     private double queryWindow;
 
