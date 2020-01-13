@@ -1,4 +1,4 @@
-package edu.cu.boulder.cs.flink;
+package edu.cu.boulder.cs.flink.triangles;
 
 /**
  * This class represents a netflow.  The fields came from the VAST Challenge

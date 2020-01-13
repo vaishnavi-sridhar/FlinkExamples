@@ -1,4 +1,4 @@
-package edu.cu.boulder.cs.flink;
+package edu.cu.boulder.cs.flink.triangles;
 
 public class Triad {
   public String v1;

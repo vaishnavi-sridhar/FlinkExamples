@@ -1,4 +1,4 @@
-package edu.cu.boulder.cs.flink;
+package edu.cu.boulder.cs.flink.triangles;
 
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.streaming.api.functions.source.RichParallelSourceFunction;

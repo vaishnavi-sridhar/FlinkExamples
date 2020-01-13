@@ -1,4 +1,4 @@
-package edu.cu.boulder.cs.flink;
+package edu.cu.boulder.cs.flink.triangles;
 
 import org.apache.commons.cli.*;
 import org.apache.flink.api.common.functions.*;
