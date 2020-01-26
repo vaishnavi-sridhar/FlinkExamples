@@ -4,3 +4,4 @@ Users
 .idea
 target
 dependency-reduced-pom.xml
+*.swp

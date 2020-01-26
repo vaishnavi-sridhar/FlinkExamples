@@ -158,26 +158,6 @@ public class BenchmarkTrianglesNetflow {
     }
   }
 
-  /*private static class EdgeJoiner implements FlatJoinFunction<Netflow, Netflow, Triad>
-  {
-    private double queryWindow;
-
-    public EdgeJoiner(double queryWindow)
-    {
-      this.queryWindow = queryWindow;
-    }
-
-    @Override
-    public void join(Netflow e1, Netflow e2, Collector<Triad> out)
-    {
-      if (e1.timeSeconds < e2.timeSeconds) {
-        if (e2.timeSeconds - e1.timeSeconds <= queryWindow) {
-          out.collect(new Triad(e1, e2));
-        }
-      }
-    }
-  }*/
-
   private static class TriadJoiner extends ProcessJoinFunction<Triad, Netflow, Triangle>
   {
     private double queryWindow;
@@ -198,45 +178,6 @@ public class BenchmarkTrianglesNetflow {
     }
   }
 
-  /*private static class TriadJoiner implements FlatJoinFunction<Triad, Netflow, Triangle>
-  {
-    private double queryWindow;
-
-    public TriadJoiner(double queryWindow)
-    {
-      this.queryWindow = queryWindow;
-    }
-
-    @Override
-    public void join(Triad triad, Netflow e3, Collector<Triangle> out)
-    {
-      if (triad.e2.timeSeconds < e3.timeSeconds) {
-        if (e3.timeSeconds - triad.e1.timeSeconds <= queryWindow) {
-          out.collect(new Triangle(triad.e1, triad.e2, e3));
-        }
-      }
-    }
-  }*/
-
-  private static class TriangleMapper implements MapFunction<Triangle, Integer>
-  {
-    @Override
-    public Integer map(Triangle triangle) throws Exception {
-      return new Integer(1);
-    }
-  }
-
-  private static class CountTriangles implements ReduceFunction<Integer>
-  {
-    @Override
-    public Integer reduce(Integer n1, Integer n2)
-    {
-      return n1 + n2;
-    }
-
-  }
-
-
   public static void main(String[] args) throws Exception {
 
     Options options = new Options();
@@ -244,10 +185,6 @@ public class BenchmarkTrianglesNetflow {
         "Number of netflows to create per source.");
     Option numIpsOption = new Option("nip", "numIps", true,
         "Number of ips in the pool.");
-    //Option windowSizeMsOption = new Option("wms", "windowSizeMs",  true,
-    //    "The window size in milliseconds");
-    //Option slideSizeMsOption = new Option("sms", "slideSizeMs", true,
-    //    "The size of the slide in milliseconds");
     Option rateOption = new Option("r", "rate", true,
         "The rate that netflows are generated.");
     Option numSourcesOption = new Option("ns", "numSources", true,
@@ -263,8 +200,6 @@ public class BenchmarkTrianglesNetflow {
 
     numNetflowsOption.setRequired(true);
     numIpsOption.setRequired(true);
-    //windowSizeMsOption.setRequired(true);
-    //slideSizeMsOption.setRequired(true);
     rateOption.setRequired(true);
     numSourcesOption.setRequired(true);
     queryWindowOption.setRequired(true);
@@ -272,8 +207,6 @@ public class BenchmarkTrianglesNetflow {
 
     options.addOption(numNetflowsOption);
     options.addOption(numIpsOption);
-    //options.addOption(windowSizeMsOption);
-    //options.addOption(slideSizeMsOption);
     options.addOption(rateOption);
     options.addOption(numSourcesOption);
     options.addOption(queryWindowOption);
@@ -296,8 +229,6 @@ public class BenchmarkTrianglesNetflow {
 
     int numEvents = Integer.parseInt(cmd.getOptionValue("numNetflows"));
     int numIps = Integer.parseInt(cmd.getOptionValue("numIps"));
-    //long windowSizeMs = Long.parseLong(cmd.getOptionValue("windowSizeMs"));
-    //long slideSizeMs = Long.parseLong(cmd.getOptionValue("slideSizeMs"));
     double rate = Double.parseDouble(cmd.getOptionValue("rate"));
     int numSources = Integer.parseInt(cmd.getOptionValue("numSources"));
     double queryWindow = Double.parseDouble(cmd.getOptionValue("queryWindow"));
@@ -311,52 +242,36 @@ public class BenchmarkTrianglesNetflow {
     env.setParallelism(numSources);
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
+    // Get a stream of netflows from the NetflowSource
     NetflowSource netflowSource = new NetflowSource(numEvents, numIps, rate);
     DataStreamSource<Netflow> netflows = env.addSource(netflowSource);
 
+    // If specified, we write out the raw data we see to a file.
     if (outputNetflowFile != null) {
       netflows.writeAsText(outputNetflowFile, FileSystem.WriteMode.OVERWRITE);
     }
 
+    // Transforms the netflows into a stream of triads
     DataStream<Triad> triads = netflows
         .keyBy(new DestKeySelector())
         .intervalJoin(netflows.keyBy(new SourceKeySelector()))
         .between(Time.milliseconds(0), Time.milliseconds((long) queryWindow * 1000))
         .process(new EdgeJoiner(queryWindow));
 
-    //DataStream<Triad> triads = netflows.join(netflows)
-    //    .where(new DestKeySelector())
-    //    .equalTo(new SourceKeySelector())
-    //    .window(SlidingEventTimeWindows.of(Time.milliseconds(windowSizeMs),
-    //        Time.milliseconds(slideSizeMs)))
-    //    .apply(new EdgeJoiner(queryWindow));
-
+    // If specified, we spit out the triads we found to disk.
     if (outputTriadFile != null) {
       triads.writeAsText(outputTriadFile, FileSystem.WriteMode.OVERWRITE);
     }
 
+    // Transforms the stream of triads into triangles.
     DataStream<Triangle> triangles = triads
         .keyBy(new TriadKeySelector())
         .intervalJoin(netflows.keyBy(new LastEdgeKeySelector()))
         .between(Time.milliseconds(0), Time.milliseconds((long) queryWindow * 1000))
         .process(new TriadJoiner(queryWindow));
 
-    /*DataStream<Triangle> triangles = triads
-        .join(netflows)
-        .where(new TriadKeySelector())
-        .equalTo(new LastEdgeKeySelector())
-        .window(SlidingEventTimeWindows.of(Time.milliseconds(windowSizeMs),
-            Time.milliseconds(slideSizeMs)))
-        .apply(new TriadJoiner(queryWindow));
-    */
-
+    // Write the triangles we found to disk.
     triangles.writeAsText(outputFile, FileSystem.WriteMode.OVERWRITE);
-    //SingleOutputStreamOperator<Integer> result = triangles.map(new TriangleMapper())
-    //    .timeWindowAll(Time.milliseconds(windowSizeMs),
-    //        Time.milliseconds(slideSizeMs))
-    //    .reduce(new CountTriangles());
-
-    //result.writeAsText(outputFile).setParallelism(1);
     env.execute();
   }
 
