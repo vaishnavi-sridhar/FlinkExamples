@@ -12,6 +12,9 @@ import org.apache.flink.streaming.api.functions.co.ProcessJoinFunction;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.Collector;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * This benchmarks finding triangles, A->B, B->C, C->A, where the times of
  * the edges are strictly increasing.  The edges are netflows, and the
@@ -165,15 +168,18 @@ public class BenchmarkTriadsNetflow {
             "Input file from which the netflow data should be read.");
     Option queryWindowOption = new Option("qw", "queryWindow", true,
             "The length of the query in seconds.");
+    Option triadDirectionOption = new Option("wateringhole", "wateringHoleAttack",true,
+            "This decides the direction for the temporal triad formation and can be specified as yes(A<-B->C) or no(A->B->C) for watering hole attack.");
 
     outputTriadOption.setRequired(true);
     inputDataFileOption.setRequired(true);
     queryWindowOption.setRequired(true);
-
+    triadDirectionOption.setRequired(true);
 
     options.addOption(queryWindowOption);
     options.addOption(outputTriadOption);
     options.addOption(inputDataFileOption);
+    options.addOption(triadDirectionOption);
 
     CommandLineParser parser = new DefaultParser();
     HelpFormatter formatter = new HelpFormatter();
@@ -192,8 +198,8 @@ public class BenchmarkTriadsNetflow {
     double queryWindow = Double.parseDouble(cmd.getOptionValue("queryWindow"));
     String inputNetflowFile = cmd.getOptionValue("inputFile");
     String outputTriadFile = cmd.getOptionValue("outputTriads");
-
-
+    String whDirection = cmd.getOptionValue("wateringHoleAttack");
+    double threshold = 100;
     // get the execution environment
     final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
     env.setParallelism(1);
@@ -203,17 +209,47 @@ public class BenchmarkTriadsNetflow {
     ModifiedNetflowSource netflowSource = new ModifiedNetflowSource(inputNetflowFile);
     DataStreamSource<SimplifiedNetflow> netflows = env.addSource(netflowSource);
 
+    HashMap<String, HashMap<String,String>> destFrequencyBySrcIp = new HashMap<>();
+    if(whDirection.equals("yes"))  //A<-B->C (triad direction for watering hole attack )
+    {
+      // Transforms the netflows into a stream of triads
+      DataStream<Triad> triads = netflows
+              .keyBy(new SourceKeySelector())
+              .intervalJoin(netflows.keyBy(new SourceKeySelector()))
+              .between(Time.milliseconds(0), Time.milliseconds((long) queryWindow * 1000))
+              .process(new EdgeJoiner(queryWindow));
+      triads.filter((triad) -> {
+        HashMap<String,String> innerHashMap = destFrequencyBySrcIp.get(triad.e1.sourceIp);
+        if (!innerHashMap.isEmpty())
+        {
+          //Frequent site in first netflow destIP followed by rare site check in second netflow destIP
+          if (Double.parseDouble(innerHashMap.get(triad.e1.destIp)) >= threshold && Double.parseDouble(innerHashMap.get(triad.e2.destIp)) < threshold) {
+            return true;
+          }
+        }
+        return false;
 
-    // Transforms the netflows into a stream of triads
-    DataStream<Triad> triads = netflows
-        .keyBy(new DestKeySelector())
-        .intervalJoin(netflows.keyBy(new SourceKeySelector()))
-        .between(Time.milliseconds(0), Time.milliseconds((long) queryWindow * 1000))
-        .process(new EdgeJoiner(queryWindow));
+      });
 
-    // If specified, we spit out the triads we found to disk.
-    if (outputTriadFile != null) {
-      triads.writeAsText(outputTriadFile, FileSystem.WriteMode.OVERWRITE);
+
+      // If specified, we spit out the triads we found to disk.
+      if (outputTriadFile != null) {
+        triads.writeAsText(outputTriadFile, FileSystem.WriteMode.OVERWRITE);
+      }
+    }
+    else  //A->B->C (default triad direction)
+    {
+      // Transforms the netflows into a stream of triads
+      DataStream<Triad> triads = netflows
+              .keyBy(new DestKeySelector())
+              .intervalJoin(netflows.keyBy(new SourceKeySelector()))
+              .between(Time.milliseconds(0), Time.milliseconds((long) queryWindow * 1000))
+              .process(new EdgeJoiner(queryWindow));
+
+      // If specified, we spit out the triads we found to disk.
+      if (outputTriadFile != null) {
+        triads.writeAsText(outputTriadFile, FileSystem.WriteMode.OVERWRITE);
+      }
     }
 
     env.execute();
