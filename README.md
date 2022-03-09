@@ -1,6 +1,5 @@
 # FlinkExamples
 
-## Counting Triangles
+## Counting Triads
 
-This example counts temporal triangles present in generated data.  The 
-example is 
+This branch include code for counting temporal triads in netflow data for 2 different directions : A->B->C and A<-B->C
