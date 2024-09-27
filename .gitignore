@@ -5,3 +5,4 @@ Users
 target
 dependency-reduced-pom.xml
 *.swp
+.DS_Store
